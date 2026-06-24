@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#07070A" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Localoop — Swipe Your City</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,700;0,800;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Leaflet (real interactive map) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<style>
+:root {
+  --bg: #07070A;
+  --bg2: #0E0E14;
+  --bg3: #14141C;
+  --line: #2A2A36;
+  --text: #FFFFFF;
+  --muted: #B4B4C6;
+  --dim: #6A6A82;
+  /* Neon palette */
+  --cyan:    #00E5FF;
+  --magenta: #FF2BD6;
+  --lime:    #B3FF1A;
+  --red:     #FF3D52;
+  --amber:   #FFC83A;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Space Grotesk', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+body {
+  position: fixed;
+  inset: 0;
+  /* Use dynamic viewport on mobile to avoid jumps from address bar */
+  height: 100dvh;
+}
+
+/* Grain overlay */
+body::before {
+  content:"";
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
+  mix-blend-mode: overlay;
+}
+
+.app {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+  z-index: 2;
+  /* Respect iOS notch / home indicator */
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+/* Desktop framing: dim the area around the app */
+@media (min-width: 481px) {
+  body { background: #000; }
+  .app {
+    box-shadow: 0 0 80px rgba(0,229,255,0.06), 0 0 0 1px var(--line);
+    border-radius: 18px;
+    margin: 12px auto;
+    max-height: calc(100dvh - 24px);
+    height: calc(100dvh - 24px);
+  }
+}
+
+/* ============ HEADER ============ */
+header.top {
+  position: relative;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--line);
+  z-index: 30;
+  background: linear-gradient(180deg, rgba(0,229,255,0.04), transparent);
+}
+.brand {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.logo {
+  font-family: 'Fraunces', serif;
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: 0.5px;
+  background: linear-gradient(90deg, #fff 0%, #fff 60%, var(--cyan) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.logo .dot { color: var(--magenta); -webkit-text-fill-color: var(--magenta); }
+.actions { display: flex; gap: 8px; }
+.btn-icon {
+  width: 38px; height: 38px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: all .15s;
+}
+.btn-icon:hover { transform: translateY(-1px); border-color: var(--cyan); }
+.btn-icon svg { width: 18px; height: 18px; stroke: var(--text); fill: none; stroke-width: 2; }
+.btn-icon.active { background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 18px rgba(0,229,255,0.5); }
+.btn-icon.active svg { stroke: var(--bg); }
+.btn-icon .badge {
+  position: absolute; top: -5px; right: -5px;
+  background: var(--magenta);
+  color: #fff;
+  font-size: 10px; font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  box-shadow: 0 0 8px rgba(255,43,214,0.7);
+}
+#btn-liked .badge { background: var(--red); box-shadow: 0 0 8px rgba(255,61,82,0.7); }
+#btn-saved .badge { background: var(--amber); box-shadow: 0 0 8px rgba(255,200,58,0.7); color: var(--bg); }
+
+/* ============ FILTERS ============ */
+.filters {
+  padding: 12px 18px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(20,20,28,0.5);
+}
+.filter-label {
+  font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--dim); font-weight: 600;
+  margin-bottom: 8px;
+}
+.chip-row {
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.chip-row::-webkit-scrollbar { display: none; }
+.chip {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  font-size: 12px; font-weight: 600;
+  border-radius: 999px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip:hover { color: var(--text); border-color: var(--cyan); }
+.chip.active {
+  color: var(--bg);
+  background: var(--lime);
+  border-color: var(--lime);
+  box-shadow: 0 0 16px rgba(179,255,26,0.4);
+}
+.chip.active.c-magenta { background: var(--magenta); border-color: var(--magenta); color: #fff; box-shadow: 0 0 16px rgba(255,43,214,0.5); }
+.chip.active.c-cyan    { background: var(--cyan);    border-color: var(--cyan);    color: var(--bg); box-shadow: 0 0 16px rgba(0,229,255,0.5); }
+.chip.active.c-red     { background: var(--red);     border-color: var(--red);     color: #fff; box-shadow: 0 0 16px rgba(255,61,82,0.5); }
+.chip.active.c-amber   { background: var(--amber);   border-color: var(--amber);   color: var(--bg); box-shadow: 0 0 16px rgba(255,200,58,0.5); }
+.row2 { margin-top: 10px; }
+
+/* ============ STAGE ============ */
+main {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+.stage {
+  position: absolute; inset: 18px;
+  display: flex; align-items: center; justify-content: center;
+}
+.card {
+  position: absolute;
+  width: 100%; height: 100%;
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.02);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  will-change: transform;
+  transition: transform .25s cubic-bezier(.2,.8,.2,1);
+}
+.card.dragging { transition: none; cursor: grabbing; }
+.card.gone {
+  transition: transform .4s cubic-bezier(.4,0,.2,1), opacity .4s;
+  opacity: 0;
+}
+.card-stack-2 { transform: scale(0.94) translateY(8px); opacity: 0.55; z-index: 1; }
+.card-stack-3 { transform: scale(0.88) translateY(16px); opacity: 0.25; z-index: 0; }
+.card-stack-1 { z-index: 2; }
+
+.card-img {
+  position: absolute; inset: 0;
+  background-size: cover;
+  background-position: center;
+}
+.card-img::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0) 100%);
+}
+
+.card-content {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 22px 22px 24px;
+  z-index: 2;
+}
+.card-cat {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.12);
+  margin-bottom: 12px;
+}
+.card-cat .dot { width: 6px; height: 6px; border-radius: 999px; }
+.card-title {
+  font-family: 'Fraunces', serif;
+  font-weight: 800;
+  font-size: 30px; line-height: 1.05;
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+.card-sub {
+  font-size: 13px; color: rgba(255,255,255,0.85);
+  margin-bottom: 12px;
+}
+.card-meta {
+  display: flex; flex-wrap: wrap; gap: 7px;
+}
+.meta-pill {
+  font-size: 11px; font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(4px);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.meta-pill.price { color: var(--lime); border-color: rgba(179,255,26,0.5); }
+.meta-pill.dist  { color: var(--cyan); border-color: rgba(0,229,255,0.5); }
+.meta-pill.time  { color: var(--amber); border-color: rgba(255,200,58,0.5); }
+
+.card-top {
+  position: absolute; top: 16px; right: 16px;
+  z-index: 3;
+  display: flex; gap: 6px;
+}
+.locate-btn {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.45);
+  border: 1.5px solid var(--cyan);
+  backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  box-shadow: 0 0 12px rgba(0,229,255,0.35);
+}
+.locate-btn:hover { transform: scale(1.08); box-shadow: 0 0 18px rgba(0,229,255,0.7); }
+.locate-btn svg { width: 18px; height: 18px; stroke: var(--cyan); fill: none; stroke-width: 2; }
+
+/* Swipe indicators */
+.swipe-stamp {
+  position: absolute;
+  top: 30px;
+  padding: 8px 18px;
+  font-size: 22px; font-weight: 800; letter-spacing: 0.1em;
+  border-radius: 8px;
+  border: 3px solid;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 4;
+  transform: rotate(-12deg);
+  font-family: 'Fraunces', serif;
+}
+.swipe-stamp.nope { right: 28px; color: var(--red); border-color: var(--red); transform: rotate(12deg); text-shadow: 0 0 12px rgba(255,61,82,0.6); }
+.swipe-stamp.yes  { left: 28px;  color: var(--lime); border-color: var(--lime); text-shadow: 0 0 12px rgba(179,255,26,0.6); }
+
+/* ============ SWIPE ACTIONS ============ */
+.actions-bar {
+  display: flex; justify-content: center; gap: 14px;
+  padding: 14px 18px 18px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+.act {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: var(--bg3);
+  border: 2px solid;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  position: relative;
+}
+.act svg { width: 24px; height: 24px; stroke-width: 2.5; fill: none; }
+.act:hover { transform: translateY(-2px) scale(1.05); }
+.act:active { transform: scale(0.94); }
+.act-nope  { border-color: var(--red); }
+.act-nope  svg { stroke: var(--red); }
+.act-nope:hover  { box-shadow: 0 0 24px rgba(255,61,82,0.6); }
+.act-info  { border-color: var(--cyan); }
+.act-info  svg { stroke: var(--cyan); }
+.act-info:hover  { box-shadow: 0 0 24px rgba(0,229,255,0.6); }
+.act-save  { border-color: var(--amber); }
+.act-save  svg { stroke: var(--amber); fill: var(--amber); fill-opacity: 0; }
+.act-save:hover  { box-shadow: 0 0 24px rgba(255,200,58,0.6); }
+.act-yes   { border-color: var(--lime); }
+.act-yes   svg { stroke: var(--lime); fill: none; }
+.act-yes:hover   { box-shadow: 0 0 24px rgba(179,255,26,0.7); }
+
+/* ============ EMPTY STATE ============ */
+.empty {
+  position: absolute; inset: 18px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  background: var(--bg3);
+  border: 1px dashed var(--line);
+  border-radius: 22px;
+  padding: 32px;
+}
+.empty .ic { font-size: 48px; margin-bottom: 14px; }
+.empty h3 { font-family: 'Fraunces', serif; font-size: 22px; margin-bottom: 8px; }
+.empty p { font-size: 13px; color: var(--muted); margin-bottom: 18px; line-height: 1.5; }
+.empty button {
+  padding: 11px 22px;
+  background: var(--cyan);
+  color: var(--bg);
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  box-shadow: 0 0 18px rgba(0,229,255,0.4);
+}
+
+/* ============ OVERLAYS (saved, map, info) ============ */
+.overlay {
+  position: absolute; inset: 0;
+  background: var(--bg);
+  z-index: 50;
+  display: flex; flex-direction: column;
+  transform: translateY(100%);
+  transition: transform .35s cubic-bezier(.2,.8,.2,1);
+}
+.overlay.open { transform: translateY(0); }
+.overlay-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.overlay-title {
+  font-family: 'Fraunces', serif;
+  font-size: 22px; font-weight: 700;
+}
+.overlay-title .accent { color: var(--cyan); }
+.overlay-close {
+  width: 36px; height: 36px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.overlay-close svg { width: 16px; height: 16px; stroke: var(--text); fill: none; stroke-width: 2.5; }
+.overlay-body { flex: 1; overflow-y: auto; }
+
+/* Saved list */
+.saved-list { padding: 14px 18px; }
+.saved-empty { text-align: center; padding: 60px 24px; color: var(--muted); }
+.saved-empty .ic { font-size: 42px; margin-bottom: 12px; }
+.saved-empty h4 { font-family: 'Fraunces', serif; font-size: 18px; color: var(--text); margin-bottom: 6px; }
+.saved-card {
+  display: flex; gap: 12px;
+  padding: 12px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-bottom: 10px;
+  transition: all .15s;
+  cursor: pointer;
+}
+.saved-card:hover { border-color: var(--cyan); }
+.saved-img {
+  width: 72px; height: 72px;
+  flex: 0 0 72px;
+  border-radius: 10px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+.saved-img::after {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.saved-info { flex: 1; min-width: 0; }
+.saved-info h5 {
+  font-family: 'Fraunces', serif; font-weight: 700;
+  font-size: 15px; margin-bottom: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.saved-info .cat { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--cyan); margin-bottom: 6px; font-weight: 600; }
+.saved-info .meta { font-size: 11px; color: var(--muted); }
+.saved-actions {
+  display: flex; align-items: center; gap: 6px;
+}
+.saved-rm {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--red);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.saved-rm svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.5; fill: none; }
+
+/* Itinerary */
+.itinerary-band {
+  padding: 14px 18px;
+  background: linear-gradient(90deg, rgba(0,229,255,0.08), rgba(255,43,214,0.08));
+  border-bottom: 1px solid var(--line);
+}
+.itinerary-band button {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--cyan);
+  border-radius: 10px;
+  color: var(--cyan);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .15s;
+}
+.itinerary-band button:hover { background: var(--cyan); color: var(--bg); }
+.itinerary-band button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Map */
+#map-container { position: relative; flex: 1; width: 100%; min-height: 200px; background: var(--bg3); overflow: hidden; }
+#map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; background: #1a3a5c; z-index: 1; }
+.map-info {
+  position: absolute;
+  bottom: 16px; left: 16px; right: 16px;
+  background: var(--bg);
+  border: 1px solid var(--cyan);
+  border-radius: 14px;
+  padding: 14px;
+  z-index: 1000;
+  box-shadow: 0 0 24px rgba(0,229,255,0.25);
+}
+.map-info-row { display: flex; gap: 12px; align-items: center; }
+.map-info-img { width: 60px; height: 60px; border-radius: 10px; background-size: cover; background-position: center; flex: 0 0 60px; }
+.map-info-text { flex: 1; min-width: 0; }
+.map-info-text .cat { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cyan); font-weight: 700; margin-bottom: 2px; }
+.map-info-text h6 { font-family: 'Fraunces', serif; font-weight: 700; font-size: 16px; margin-bottom: 2px; }
+.map-info-text .sub { font-size: 11px; color: var(--muted); }
+.map-info-meta { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.map-info-pill { font-size: 10px; padding: 3px 8px; border-radius: 999px; background: var(--bg3); border: 1px solid var(--line); }
+.map-info-pill.price { color: var(--lime); border-color: rgba(179,255,26,0.4); }
+.map-info-pill.dist { color: var(--cyan); border-color: rgba(0,229,255,0.4); }
+
+/* Leaflet dark overrides */
+.leaflet-container { background: #0a0a12 !important; font-family: 'Space Grotesk', sans-serif; }
+.leaflet-control-attribution { background: rgba(0,0,0,0.5) !important; color: #888 !important; font-size: 9px !important; padding: 2px 6px !important; }
+.leaflet-control-attribution a { color: var(--cyan) !important; }
+.leaflet-control-zoom a { background: var(--bg3) !important; color: var(--text) !important; border-color: var(--line) !important; }
+.leaflet-control-zoom a:hover { background: var(--cyan) !important; color: var(--bg) !important; }
+
+/* Custom map markers */
+.marker-pin {
+  width: 36px; height: 36px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  display: flex; align-items: center; justify-content: center;
+  border: 2.5px solid #fff;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.6), 0 0 14px currentColor;
+}
+.marker-pin .marker-ic {
+  transform: rotate(45deg);
+  font-size: 16px;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+}
+.marker-pin.current {
+  background: var(--cyan);
+  color: var(--cyan);
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  transform: none;
+  border: 3px solid #fff;
+  animation: pulse 2s ease-in-out infinite;
+}
+.marker-pin.current::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid var(--cyan);
+  opacity: 0.4;
+  animation: ping 2s ease-out infinite;
+}
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,229,255,0.4); } 50% { box-shadow: 0 0 16px 4px rgba(0,229,255,0.6); } }
+@keyframes ping { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.4); opacity: 0; } }
+
+/* Info modal */
+.modal-back {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(8px);
+  z-index: 60;
+  display: none;
+  align-items: flex-end;
+}
+.modal-back.open { display: flex; }
+.modal {
+  width: 100%;
+  background: var(--bg2);
+  border-top: 1px solid var(--cyan);
+  border-radius: 22px 22px 0 0;
+  padding: 22px 22px 28px;
+  max-height: 80%;
+  overflow-y: auto;
+  animation: slideUp .35s cubic-bezier(.2,.8,.2,1);
+  box-shadow: 0 -20px 40px rgba(0,0,0,0.5);
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal-handle { width: 38px; height: 4px; background: var(--line); border-radius: 999px; margin: -8px auto 16px; }
+.modal-title { font-family: 'Fraunces', serif; font-weight: 800; font-size: 24px; margin-bottom: 6px; }
+.modal-cat { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--cyan); font-weight: 700; margin-bottom: 12px; }
+.modal-desc { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 16px; }
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.modal-stat { background: var(--bg3); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.modal-stat .lab { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); font-weight: 600; margin-bottom: 4px; }
+.modal-stat .val { font-size: 13px; font-weight: 700; }
+.modal-stat .val.cyan { color: var(--cyan); }
+.modal-stat .val.lime { color: var(--lime); }
+.modal-stat .val.amber { color: var(--amber); }
+.modal-stat .val.red { color: var(--red); }
+
+/* Toast */
+.toast {
+  position: fixed;
+  top: 70px; left: 50%; transform: translateX(-50%) translateY(-20px);
+  background: var(--bg2);
+  border: 1px solid var(--lime);
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 12px; font-weight: 600;
+  z-index: 80;
+  opacity: 0;
+  transition: all .25s;
+  box-shadow: 0 0 18px rgba(179,255,26,0.4);
+  pointer-events: none;
+  max-width: 80%;
+  text-align: center;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.red { border-color: var(--red); box-shadow: 0 0 18px rgba(255,61,82,0.4); }
+.toast.cyan { border-color: var(--cyan); box-shadow: 0 0 18px rgba(0,229,255,0.4); }
+.toast.magenta { border-color: var(--magenta); box-shadow: 0 0 18px rgba(255,43,214,0.4); }
+
+/* Itinerary modal */
+.iti-stop {
+  display: flex; gap: 12px;
+  padding: 12px;
+  background: var(--bg3);
+  border-left: 3px solid var(--cyan);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.iti-stop:nth-child(3n) { border-left-color: var(--magenta); }
+.iti-stop:nth-child(3n+1) { border-left-color: var(--lime); }
+.iti-stop:nth-child(3n+2) { border-left-color: var(--amber); }
+.iti-time { font-family: 'Fraunces', serif; font-weight: 800; font-size: 16px; color: var(--cyan); min-width: 60px; }
+.iti-info h6 { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
+.iti-info .cat { font-size: 10px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- HEADER -->
+  <header class="top">
+    <div class="brand">
+      <div class="logo">LOCALOOP<span class="dot">.</span></div>
+      <div class="actions">
+        <button class="btn-icon" id="btn-map" title="Map view">
+          <svg viewBox="0 0 24 24"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+        </button>
+        <button class="btn-icon" id="btn-liked" title="Liked">
+          <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>
+          <span class="badge" id="liked-count" style="display:none">0</span>
+        </button>
+        <button class="btn-icon" id="btn-saved" title="Saved">
+          <svg viewBox="0 0 24 24"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+          <span class="badge" id="saved-count" style="display:none">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- FILTERS -->
+  <div class="filters">
+    <div class="filter-label">Category</div>
+    <div class="chip-row" id="cat-row"></div>
+    <div class="filter-label row2">Neighborhood</div>
+    <div class="chip-row" id="nbh-row"></div>
+  </div>
+
+  <!-- STAGE -->
+  <main>
+    <div class="stage" id="stage"></div>
+  </main>
+
+  <!-- BOTTOM ACTIONS -->
+  <div class="actions-bar">
+    <button class="act act-nope" id="act-nope" title="Skip">
+      <svg viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+    <button class="act act-info" id="act-info" title="Info">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    </button>
+    <button class="act act-save" id="act-save" title="Bookmark">
+      <svg viewBox="0 0 24 24"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+    </button>
+    <button class="act act-yes" id="act-yes" title="Like">
+      <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>
+    </button>
+  </div>
+
+  <!-- SAVED OVERLAY -->
+  <div class="overlay" id="overlay-saved">
+    <div class="overlay-head">
+      <div class="overlay-title">Your <span class="accent">shortlist</span></div>
+      <button class="overlay-close" data-close="overlay-saved">
+        <svg viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="itinerary-band" id="iti-band" style="display:none">
+      <button id="iti-btn">⚡ Generate tonight's itinerary</button>
+    </div>
+    <div class="overlay-body">
+      <div class="saved-list" id="saved-list"></div>
+    </div>
+  </div>
+
+  <!-- LIKED OVERLAY -->
+  <div class="overlay" id="overlay-liked">
+    <div class="overlay-head">
+      <div class="overlay-title">Your <span class="accent" style="color:var(--red)">likes</span></div>
+      <button class="overlay-close" data-close="overlay-liked">
+        <svg viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="overlay-body">
+      <div class="saved-list" id="liked-list"></div>
+    </div>
+  </div>
+
+  <!-- MAP OVERLAY -->
+  <div class="overlay" id="overlay-map">
+    <div class="overlay-head">
+      <div class="overlay-title"><span class="accent">Map</span> of places</div>
+      <button class="overlay-close" data-close="overlay-map">
+        <svg viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="map-container">
+      <div id="map"></div>
+      <div class="map-info" id="map-info" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- INFO MODAL -->
+  <div class="modal-back" id="modal-back">
+    <div class="modal" id="modal">
+      <div class="modal-handle"></div>
+      <div class="modal-cat" id="m-cat"></div>
+      <div class="modal-title" id="m-title"></div>
+      <div class="modal-desc" id="m-desc"></div>
+      <div class="modal-grid" id="m-grid"></div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ============================================================
+   LOCALOOP DEMO — Data + Interaction Layer
+   ============================================================ */
+
+// 35+ real Rome POIs across categories
+const PLACES = [
+  // RESTAURANTS
+  { id:'r1', name:'Pizzarium Bonci', cat:'restaurant', nbh:'Prati', lat:41.9069, lng:12.4470, price:'€', time:'10 min', desc:"Iconic by-the-slice pizza by Gabriele Bonci. Toppings change daily, every slice is sold by weight.", img:'https://images.unsplash.com/photo-1601925240970-98447ad8eaff?w=900&q=80&auto=format&fit=crop' },
+  { id:'r2', name:'Roscioli', cat:'restaurant', nbh:'Centro', lat:41.8941, lng:12.4744, price:'€€€', time:'90 min', desc:"Legendary salumeria-osteria in the heart of Rome. The carbonara is era-defining.", img:'https://images.unsplash.com/photo-1571997478779-2adcbbe9ab2f?w=900&q=80&auto=format&fit=crop' },
+  { id:'r3', name:'Trapizzino Testaccio', cat:'restaurant', nbh:'Testaccio', lat:41.8769, lng:12.4761, price:'€', time:'15 min', desc:"Triangular pocket of pizza bianca stuffed with Roman classics. Pollo alla cacciatora is the move.", img:'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=900&q=80&auto=format&fit=crop' },
+  { id:'r4', name:'Da Enzo al 29', cat:'restaurant', nbh:'Trastevere', lat:41.8893, lng:12.4750, price:'€€', time:'75 min', desc:"Tiny Trastevere trattoria, no-reservation queues, perfect cacio e pepe. Worth the wait.", img:'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=900&q=80&auto=format&fit=crop' },
+  { id:'r5', name:'Marigold', cat:'restaurant', nbh:'Ostiense', lat:41.8730, lng:12.4795, price:'€€', time:'60 min', desc:"Scandi-Roman bakery and brunch spot, sourdough cult, plant-forward plates.", img:'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=900&q=80&auto=format&fit=crop' },
+  { id:'r6', name:'Santo Palato', cat:'restaurant', nbh:'San Giovanni', lat:41.8847, lng:12.5102, price:'€€', time:'75 min', desc:"Sarah Cicolini's temple of Roman offal and tradition reinvented. Bookings mandatory.", img:'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=900&q=80&auto=format&fit=crop' },
+  { id:'r7', name:'Mercato di Testaccio', cat:'restaurant', nbh:'Testaccio', lat:41.8767, lng:12.4769, price:'€', time:'45 min', desc:"Covered market with food stalls: Mordi e Vai's allesso panino is unmissable.", img:'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=900&q=80&auto=format&fit=crop' },
+  { id:'r8', name:'Salumeria Roscioli Caffè', cat:'restaurant', nbh:'Centro', lat:41.8951, lng:12.4753, price:'€€', time:'40 min', desc:"Espresso, maritozzi, and tiny plates next door to the famed Roscioli mothership.", img:'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=900&q=80&auto=format&fit=crop' },
+
+  // CULTURE
+  { id:'c1', name:'Galleria Borghese', cat:'culture', nbh:'Borghese', lat:41.9142, lng:12.4923, price:'€15', time:'2 h', desc:"Caravaggio, Bernini, Canova in a single villa. Two-hour timed slots, book ahead.", img:'https://images.unsplash.com/photo-1577720580479-7d839d829c73?w=900&q=80&auto=format&fit=crop' },
+  { id:'c2', name:'MAXXI', cat:'culture', nbh:'Flaminio', lat:41.9281, lng:12.4669, price:'€12', time:'2 h', desc:"Zaha Hadid's contemporary-art ribbon. Rotating exhibitions, architecture lovers' pilgrimage.", img:'https://images.unsplash.com/photo-1565060169187-25e1f4c9b9e3?w=900&q=80&auto=format&fit=crop' },
+  { id:'c3', name:'Pantheon', cat:'culture', nbh:'Centro', lat:41.8986, lng:12.4769, price:'€5', time:'45 min', desc:"Hadrian's geometric miracle. The oculus is the only light source. Free on the first Sunday.", img:'https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=900&q=80&auto=format&fit=crop' },
+  { id:'c4', name:'Centrale Montemartini', cat:'culture', nbh:'Ostiense', lat:41.8666, lng:12.4807, price:'€10', time:'90 min', desc:"Classical statues installed inside a former electric power plant. Unforgettable contrast.", img:'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=900&q=80&auto=format&fit=crop' },
+  { id:'c5', name:'Palazzo Altemps', cat:'culture', nbh:'Centro', lat:41.9015, lng:12.4729, price:'€10', time:'90 min', desc:"Renaissance palace turned sculpture museum. The Ludovisi collection is jaw-dropping.", img:'https://images.unsplash.com/photo-1591019479261-1a103585c559?w=900&q=80&auto=format&fit=crop' },
+  { id:'c6', name:'Auditorium Parco della Musica', cat:'culture', nbh:'Flaminio', lat:41.9286, lng:12.4734, price:'€20+', time:'2 h', desc:"Renzo Piano's three beetle-shaped halls. Concerts, jazz, festivals all year.", img:'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=900&q=80&auto=format&fit=crop' },
+
+  // NIGHTLIFE
+  { id:'n1', name:'Spazio Novecento', cat:'nightlife', nbh:'EUR', lat:41.8359, lng:12.4674, price:'€20', time:'late', desc:"EUR's main-stage club. House, techno, big international guests on weekends.", img:'https://images.unsplash.com/photo-1571266028243-d220c6a2eef9?w=900&q=80&auto=format&fit=crop' },
+  { id:'n2', name:'Goa Club', cat:'nightlife', nbh:'Ostiense', lat:41.8662, lng:12.4790, price:'€15', time:'late', desc:"Underground techno institution since 1999. The Ultrabeat residency is legendary.", img:'https://images.unsplash.com/photo-1583244532610-2a234e9aa654?w=900&q=80&auto=format&fit=crop' },
+  { id:'n3', name:'Lanificio 159', cat:'nightlife', nbh:'Tiburtino', lat:41.9266, lng:12.5402, price:'€15', time:'late', desc:"Industrial wool-factory turned multi-room venue. Live + club nights, eclectic line-up.", img:'https://images.unsplash.com/photo-1574391884720-bbc049ec09ad?w=900&q=80&auto=format&fit=crop' },
+  { id:'n4', name:'Freni e Frizioni', cat:'nightlife', nbh:'Trastevere', lat:41.8915, lng:12.4720, price:'€10', time:'evening', desc:"Ex-garage cocktail bar at the heart of Trastevere. Aperitivo from 7pm.", img:'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=900&q=80&auto=format&fit=crop' },
+  { id:'n5', name:'The Jerry Thomas Project', cat:'nightlife', nbh:'Centro', lat:41.9015, lng:12.4707, price:'€14', time:'evening', desc:"Hidden speakeasy. Password required (find it on the website). Cocktails are world-class.", img:'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=900&q=80&auto=format&fit=crop' },
+  { id:'n6', name:'Drink Kong', cat:'nightlife', nbh:'Monti', lat:41.8949, lng:12.4960, price:'€14', time:'evening', desc:"Blade-Runner aesthetic, Asian flavors, World's 50 Best Bars regular. Reserve.", img:'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=900&q=80&auto=format&fit=crop' },
+  { id:'n7', name:'Monk Club', cat:'nightlife', nbh:'Tiburtino', lat:41.9233, lng:12.5485, price:'€10', time:'late', desc:"Live music + DJ sets in a sprawling courtyard. Indie, electronic, occasional rap.", img:'https://images.unsplash.com/photo-1493676304819-0d7a8d026dcf?w=900&q=80&auto=format&fit=crop' },
+
+  // EVENTS
+  { id:'e1', name:'Estate Romana', cat:'event', nbh:'Tevere', lat:41.8902, lng:12.4696, price:'free', time:'evenings', desc:"Summer-long festival along the Tiber: cinema, music, food stalls, books.", img:'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=900&q=80&auto=format&fit=crop' },
+  { id:'e2', name:'Open House Roma', cat:'event', nbh:'Various', lat:41.9028, lng:12.4964, price:'free', time:'weekend', desc:"Two days of free access to private and inaccessible architecture across the city. Sign up.", img:'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?w=900&q=80&auto=format&fit=crop' },
+  { id:'e3', name:'Romaeuropa Festival', cat:'event', nbh:'Various', lat:41.9286, lng:12.4734, price:'€18+', time:'evenings', desc:"International contemporary performance festival. Theatre, dance, digital arts, music. Sept–Dec.", img:'https://images.unsplash.com/photo-1503095396549-807759245b35?w=900&q=80&auto=format&fit=crop' },
+  { id:'e4', name:'Spettacoli al Colosseo', cat:'event', nbh:'Centro', lat:41.8902, lng:12.4922, price:'€25', time:'evening', desc:"Summer evening tours of the Colosseum at sunset, lights on, hypogeum included.", img:'https://images.unsplash.com/photo-1552432552-06c0b0a94dda?w=900&q=80&auto=format&fit=crop' },
+  { id:'e5', name:'Eataly Roma Tastings', cat:'event', nbh:'Ostiense', lat:41.8636, lng:12.4823, price:'€20', time:'evening', desc:"Weekly producer-led tastings: wine, olive oil, cheese, charcuterie. Reserve a spot.", img:'https://images.unsplash.com/photo-1510924199351-4e9d94df18a6?w=900&q=80&auto=format&fit=crop' },
+
+  // OUTDOORS
+  { id:'o1', name:'Villa Borghese', cat:'outdoor', nbh:'Borghese', lat:41.9136, lng:12.4924, price:'free', time:'flexible', desc:"Rome's central park. Rent a rowboat on the lake, walk to the Pincio panoramic terrace.", img:'https://images.unsplash.com/photo-1568797557076-fb16f3fc4e5d?w=900&q=80&auto=format&fit=crop' },
+  { id:'o2', name:'Appia Antica', cat:'outdoor', nbh:'Appia', lat:41.8552, lng:12.5169, price:'free', time:'3+ h', desc:"Walk or bike the ancient consular road. Sundays are car-free. Stop at Cecilia Metella's tomb.", img:'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=900&q=80&auto=format&fit=crop' },
+  { id:'o3', name:'Giardino degli Aranci', cat:'outdoor', nbh:'Aventino', lat:41.8843, lng:12.4794, price:'free', time:'30 min', desc:"Quiet orange grove on the Aventine with the best skyline view of Rome at sunset.", img:'https://images.unsplash.com/photo-1502920514313-52581002a659?w=900&q=80&auto=format&fit=crop' },
+  { id:'o4', name:'Parco degli Acquedotti', cat:'outdoor', nbh:'Tuscolano', lat:41.8463, lng:12.5638, price:'free', time:'2 h', desc:"Ancient Roman aqueducts cutting through open countryside. Joggers and movie shoots love it.", img:'https://images.unsplash.com/photo-1455729552865-3658a5d39692?w=900&q=80&auto=format&fit=crop' },
+  { id:'o5', name:'Gianicolo viewpoint', cat:'outdoor', nbh:'Trastevere', lat:41.8915, lng:12.4624, price:'free', time:'1 h', desc:"Climb the Janiculum for the postcard view of Rome. Daily cannon firing at noon.", img:'https://images.unsplash.com/photo-1485081669829-bacb8c7bb1f3?w=900&q=80&auto=format&fit=crop' },
+
+  // COFFEE
+  { id:'k1', name:'Sant\'Eustachio Il Caffè', cat:'coffee', nbh:'Centro', lat:41.8983, lng:12.4754, price:'€2', time:'15 min', desc:"Rome's most disputed espresso. The crema is unique. Avoid the sugar trap if you're a purist.", img:'https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=900&q=80&auto=format&fit=crop' },
+  { id:'k2', name:'Faro Caffè', cat:'coffee', nbh:'Flaminio', lat:41.9214, lng:12.4691, price:'€3', time:'20 min', desc:"Specialty third-wave roastery. Flat whites and filter brews done seriously.", img:'https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=900&q=80&auto=format&fit=crop' },
+  { id:'k3', name:'Marigold Bakery', cat:'coffee', nbh:'Ostiense', lat:41.8730, lng:12.4795, price:'€4', time:'30 min', desc:"Sourdough heaven, cinnamon buns, oat-milk lattes. Weekends get packed.", img:'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=900&q=80&auto=format&fit=crop' },
+  { id:'k4', name:'Tazza d\'Oro', cat:'coffee', nbh:'Centro', lat:41.8993, lng:12.4773, price:'€2', time:'15 min', desc:"By the Pantheon. The granita di caffè with cream is summer in a glass.", img:'https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=900&q=80&auto=format&fit=crop' },
+
+  // === ROUND 2 — more density per category × neighborhood ===
+  // More restaurants
+  { id:'r9',  name:'Bonci Mercato Centrale', cat:'restaurant', nbh:'Centro', lat:41.9008, lng:12.5018, price:'€', time:'30 min', desc:"Termini food hall featuring Bonci's pizza, plus a curated lineup of artisans.", img:'' },
+  { id:'r10', name:'Pianostrada', cat:'restaurant', nbh:'Trastevere', lat:41.8866, lng:12.4682, price:'€€', time:'80 min', desc:"Cult focacce filled with creative pairings and a hidden garden in the back.", img:'' },
+  { id:'r11', name:'Sbanco', cat:'restaurant', nbh:'San Giovanni', lat:41.8810, lng:12.5057, price:'€€', time:'70 min', desc:"Stefano Callegari's playful pizzeria. The 'cacio e pepe pizza' is a Roman myth.", img:'' },
+  { id:'r12', name:'Pesci Fritti', cat:'restaurant', nbh:'Prati', lat:41.9099, lng:12.4577, price:'€€', time:'60 min', desc:"Roman-Jewish fried fish done modern. Tiny spot, big flavor.", img:'' },
+  { id:'r13', name:'Trecca', cat:'restaurant', nbh:'Ostiense', lat:41.8690, lng:12.4779, price:'€€', time:'90 min', desc:"Roman tradition reinvented with elegance. The trippa is a quiet masterpiece.", img:'' },
+  // More culture
+  { id:'c7',  name:'Villa Farnesina', cat:'culture', nbh:'Trastevere', lat:41.8919, lng:12.4671, price:'€10', time:'90 min', desc:"Raphael's Triumph of Galatea + Peruzzi's trompe-l'oeil rooms. Underrated gem.", img:'' },
+  { id:'c8',  name:'GNAM National Gallery', cat:'culture', nbh:'Borghese', lat:41.9166, lng:12.4830, price:'€10', time:'2 h', desc:"Italy's largest modern-art collection: Boccioni, De Chirico, Burri, Pollock, Twombly.", img:'' },
+  { id:'c9',  name:'MACRO', cat:'culture', nbh:'Ostiense', lat:41.9135, lng:12.5060, price:'free', time:'90 min', desc:"Contemporary-art experiments in a former Peroni brewery. Free and unpredictable.", img:'' },
+  { id:'c10', name:'Galleria Doria Pamphilj', cat:'culture', nbh:'Centro', lat:41.8979, lng:12.4818, price:'€14', time:'2 h', desc:"Private noble collection still owned by the family. Velazquez's Pope Innocent X lives here.", img:'' },
+  // More nightlife
+  { id:'n8',  name:'Salotto 42', cat:'nightlife', nbh:'Centro', lat:41.8993, lng:12.4788, price:'€12', time:'evening', desc:"Boutique-style bar in Piazza di Pietra. Cocktails under ancient temple columns.", img:'' },
+  { id:'n9',  name:'Ex Dogana', cat:'nightlife', nbh:'Tiburtino', lat:41.9072, lng:12.5217, price:'€10', time:'late', desc:"Ex customs warehouse turned massive cultural venue. Music, art, parties, food trucks.", img:'' },
+  { id:'n10', name:'Vicious Club', cat:'nightlife', nbh:'EUR', lat:41.8326, lng:12.4733, price:'€20', time:'late', desc:"EUR's house and techno destination. International guests on weekends, dress to impress.", img:'' },
+  { id:'n11', name:'Bar San Calisto', cat:'nightlife', nbh:'Trastevere', lat:41.8888, lng:12.4707, price:'€4', time:'late', desc:"Sticky tables, cheap beer, regulars from all walks of Roman life. A cult.", img:'' },
+  { id:'n12', name:'Wisdomless Club', cat:'nightlife', nbh:'Ostiense', lat:41.8716, lng:12.4831, price:'€15', time:'late', desc:"Underground electronic music, lo-fi raves, art in an industrial setting.", img:'' },
+  { id:'n13', name:'Argot', cat:'nightlife', nbh:'Monti', lat:41.8941, lng:12.4945, price:'€13', time:'evening', desc:"Tiny cocktail bar in Monti, live jazz some nights. Reservation almost mandatory.", img:'' },
+  // More events
+  { id:'e6',  name:'Cinema America', cat:'event', nbh:'Trastevere', lat:41.8895, lng:12.4716, price:'free', time:'evenings', desc:"Free open-air cinema run by a youth collective. Iconic Roman summer ritual.", img:'' },
+  { id:'e7',  name:'Lungo il Tevere', cat:'event', nbh:'Tevere', lat:41.8927, lng:12.4691, price:'free', time:'evenings', desc:"Tiber-side stalls, food trucks, live music, artisan markets. Every summer night.", img:'' },
+  { id:'e8',  name:'Festa del Cinema', cat:'event', nbh:'Flaminio', lat:41.9290, lng:12.4736, price:'€15+', time:'2 h', desc:"Rome's international film festival at the Auditorium. October, ten days, all genres.", img:'' },
+  { id:'e9',  name:'Mercato Campagna Amica', cat:'event', nbh:'Centro', lat:41.8910, lng:12.4810, price:'free', time:'1 h', desc:"Weekend farmers market with Lazio producers. The buffalo mozzarella stand is the secret.", img:'' },
+  { id:'e10', name:'Notte dei Musei', cat:'event', nbh:'Various', lat:41.9030, lng:12.4966, price:'free', time:'evening', desc:"One night in May when all city museums open free until 1am. Plan a route.", img:'' },
+  { id:'e11', name:'Vinoforum', cat:'event', nbh:'Ostiense', lat:41.8654, lng:12.4807, price:'€25', time:'2 h', desc:"Ten days of wine tastings with 600+ producers. The chef stages are surprisingly good.", img:'' },
+  // More outdoor
+  { id:'o6',  name:'Orto Botanico', cat:'outdoor', nbh:'Trastevere', lat:41.8929, lng:12.4666, price:'€8', time:'90 min', desc:"Twelve-hectare botanical garden on the Janiculum slope. The bamboo grove is meditative.", img:'' },
+  { id:'o7',  name:'Roseto Comunale', cat:'outdoor', nbh:'Aventino', lat:41.8836, lng:12.4830, price:'free', time:'45 min', desc:"Rose garden facing the Palatine. Best in May. Open only when roses are in bloom.", img:'' },
+  { id:'o8',  name:'Villa Doria Pamphilj', cat:'outdoor', nbh:'Various', lat:41.8843, lng:12.4514, price:'free', time:'2+ h', desc:"Rome's largest landscape park. Joggers, dogs, families, picnics. Hidden ponds throughout.", img:'' },
+  { id:'o9',  name:'Lago EUR', cat:'outdoor', nbh:'EUR', lat:41.8307, lng:12.4711, price:'free', time:'1 h', desc:"Modernist boating lake surrounded by Fascist-era architecture. Strange and beautiful.", img:'' },
+  { id:'o10', name:'Parco Caffarella', cat:'outdoor', nbh:'Appia', lat:41.8615, lng:12.5125, price:'free', time:'2 h', desc:"Wild countryside park between Appia Antica and the city. Sheep, aqueducts, no cars.", img:'' },
+  // More coffee
+  { id:'k5', name:'Roscioli Caffè', cat:'coffee', nbh:'Centro', lat:41.8953, lng:12.4756, price:'€3', time:'20 min', desc:"Roscioli family's coffee outpost. Maritozzi, pastries, espresso. Lines from 8am.", img:'' },
+  { id:'k6', name:'Pergamino Caffè', cat:'coffee', nbh:'Prati', lat:41.9075, lng:12.4634, price:'€3', time:'25 min', desc:"Modern roastery near the Vatican. Strong on filter brews and seasonal beans.", img:'' },
+  { id:'k7', name:'Otaleg', cat:'coffee', nbh:'Trastevere', lat:41.8867, lng:12.4655, price:'€4', time:'20 min', desc:"Technically gelato, but the espresso flavour is so good it counts. Marco Radicioni's craft.", img:'' },
+  { id:'k8', name:'Barnum Cafe', cat:'coffee', nbh:'Centro', lat:41.8957, lng:12.4694, price:'€4', time:'30 min', desc:"Loose-leaf teas, third-wave coffee and brunch plates. Vintage-shop atmosphere.", img:'' },
+];
+
+// Categories & colors (neon palette)
+const CATS = [
+  { id:'all',        label:'All',         color:'lime',    emoji:'✦' },
+  { id:'restaurant', label:'Restaurants', color:'red',     emoji:'🍝' },
+  { id:'culture',    label:'Culture',     color:'cyan',    emoji:'🏛' },
+  { id:'nightlife',  label:'Nightlife',   color:'magenta', emoji:'🎧' },
+  { id:'event',      label:'Events',      color:'amber',   emoji:'🎟' },
+  { id:'outdoor',    label:'Outdoors',    color:'lime',    emoji:'🌳' },
+  { id:'coffee',     label:'Coffee',      color:'amber',   emoji:'☕' },
+];
+
+const CAT_HEX = {
+  restaurant: '#FF3D52',
+  culture:    '#00E5FF',
+  nightlife:  '#FF2BD6',
+  event:      '#FFC83A',
+  outdoor:    '#B3FF1A',
+  coffee:     '#FFC83A',
+};
+
+/* ============================================================
+   posterFor(place) — generates a neon SVG poster as data-URI
+   No external image dependencies. Coherent neon aesthetic.
+   ============================================================ */
+
+// Category-specific geometric motif (drawn in pure SVG)
+const POSTER_MOTIFS = {
+  restaurant: `
+    <!-- plate + steam lines -->
+    <circle cx="400" cy="290" r="120" fill="none" stroke="#fff" stroke-width="3" opacity="0.9"/>
+    <circle cx="400" cy="290" r="78" fill="none" stroke="#fff" stroke-width="2" opacity="0.5"/>
+    <circle cx="400" cy="290" r="34" fill="#fff" opacity="0.95"/>
+    <path d="M340 150 Q360 110 340 70" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <path d="M400 150 Q420 100 400 50"  fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+    <path d="M460 150 Q480 110 460 70"  fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  `,
+  culture: `
+    <!-- classical columns + pediment -->
+    <polygon points="220,210 580,210 510,140 290,140" fill="none" stroke="#fff" stroke-width="3"/>
+    <rect x="240" y="220" width="40" height="200" fill="none" stroke="#fff" stroke-width="3"/>
+    <rect x="320" y="220" width="40" height="200" fill="none" stroke="#fff" stroke-width="3"/>
+    <rect x="400" y="220" width="40" height="200" fill="none" stroke="#fff" stroke-width="3"/>
+    <rect x="480" y="220" width="40" height="200" fill="none" stroke="#fff" stroke-width="3"/>
+    <rect x="200" y="420" width="400" height="14" fill="#fff" opacity="0.9"/>
+    <circle cx="400" cy="175" r="6" fill="#fff"/>
+  `,
+  nightlife: `
+    <!-- disco ball + sound waves -->
+    <circle cx="400" cy="270" r="100" fill="none" stroke="#fff" stroke-width="3"/>
+    <g stroke="#fff" stroke-width="1.5" opacity="0.8">
+      <line x1="300" y1="270" x2="500" y2="270"/>
+      <line x1="320" y1="220" x2="480" y2="220"/>
+      <line x1="320" y1="320" x2="480" y2="320"/>
+      <line x1="340" y1="180" x2="460" y2="180"/>
+      <line x1="340" y1="360" x2="460" y2="360"/>
+      <line x1="400" y1="170" x2="400" y2="370"/>
+      <line x1="350" y1="180" x2="350" y2="360"/>
+      <line x1="450" y1="180" x2="450" y2="360"/>
+    </g>
+    <line x1="400" y1="170" x2="400" y2="100" stroke="#fff" stroke-width="2"/>
+    <rect x="380" y="80" width="40" height="20" fill="#fff"/>
+    <path d="M150 270 Q170 220 150 170" fill="none" stroke="#fff" stroke-width="2.5" opacity="0.6"/>
+    <path d="M180 270 Q200 200 180 130" fill="none" stroke="#fff" stroke-width="2.5" opacity="0.4"/>
+    <path d="M650 270 Q630 220 650 170" fill="none" stroke="#fff" stroke-width="2.5" opacity="0.6"/>
+    <path d="M620 270 Q600 200 620 130" fill="none" stroke="#fff" stroke-width="2.5" opacity="0.4"/>
+  `,
+  event: `
+    <!-- ticket -->
+    <path d="M180 200 L620 200 L620 240 a20 20 0 0 0 0 40 L620 320 L180 320 L180 280 a20 20 0 0 0 0 -40 Z"
+          fill="none" stroke="#fff" stroke-width="3"/>
+    <line x1="400" y1="200" x2="400" y2="320" stroke="#fff" stroke-width="2" stroke-dasharray="6 6"/>
+    <circle cx="240" cy="260" r="6" fill="#fff"/>
+    <text x="320" y="270" font-family="Georgia, serif" font-style="italic" font-size="22" fill="#fff" text-anchor="middle">ADMIT ONE</text>
+    <text x="510" y="270" font-family="Georgia, serif" font-weight="bold" font-size="28" fill="#fff" text-anchor="middle">★</text>
+  `,
+  outdoor: `
+    <!-- tree silhouette + mountains -->
+    <path d="M100 420 L260 250 L380 350 L520 200 L700 420 Z" fill="none" stroke="#fff" stroke-width="3"/>
+    <circle cx="600" cy="120" r="40" fill="#fff" opacity="0.9"/>
+    <path d="M380 420 L380 320 M340 350 L380 320 L420 350 M325 380 L380 320 L435 380" stroke="#fff" stroke-width="3" fill="none"/>
+    <line x1="100" y1="430" x2="700" y2="430" stroke="#fff" stroke-width="3"/>
+  `,
+  coffee: `
+    <!-- coffee cup + heart -->
+    <path d="M270 200 L530 200 L510 380 Q510 410 480 410 L320 410 Q290 410 290 380 Z"
+          fill="none" stroke="#fff" stroke-width="3"/>
+    <path d="M530 240 Q590 240 590 290 Q590 340 530 340" fill="none" stroke="#fff" stroke-width="3"/>
+    <path d="M400 280 c -20 -25 -55 -10 -55 15 c 0 25 55 60 55 60 s 55 -35 55 -60 c 0 -25 -35 -40 -55 -15"
+          fill="#fff" opacity="0.95"/>
+    <path d="M340 130 Q360 90 340 50" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+    <path d="M400 130 Q420 80 400 30" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+    <path d="M460 130 Q480 90 460 50" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  `,
+};
+
+// Simple deterministic hash so each place gets a stable background pattern
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; }
+  return Math.abs(h);
+}
+
+function posterFor(p) {
+  const color = CAT_HEX[p.cat] || '#00E5FF';
+  const catObj = CATS.find(c => c.id === p.cat);
+  const catLabel = (catObj ? catObj.label : '').toUpperCase();
+  const motif = POSTER_MOTIFS[p.cat] || '';
+
+  // Deterministic background pattern seed
+  const h = hashStr(p.id + p.name);
+  // diagonal stripes offset by hash
+  const stripeOffset = (h % 40);
+
+  // Split long names onto two lines if needed (around 16 chars)
+  const name = p.name;
+  let line1 = name, line2 = '';
+  if (name.length > 16) {
+    const words = name.split(' ');
+    let acc = '';
+    for (let i = 0; i < words.length; i++) {
+      if ((acc + ' ' + words[i]).trim().length <= 16) { acc = (acc + ' ' + words[i]).trim(); }
+      else { line1 = acc; line2 = words.slice(i).join(' '); break; }
+    }
+    if (!line2) { line1 = name; }
+  }
+
+  // Build SVG (800x600 keeps card aspect with cover crop)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="g${h}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="${color}" stop-opacity="0.95"/>
+        <stop offset="55%" stop-color="${color}" stop-opacity="0.75"/>
+        <stop offset="100%" stop-color="#000" stop-opacity="1"/>
+      </linearGradient>
+      <pattern id="p${h}" patternUnits="userSpaceOnUse" width="44" height="44" patternTransform="rotate(35) translate(${stripeOffset} 0)">
+        <rect width="44" height="44" fill="transparent"/>
+        <line x1="0" y1="0" x2="0" y2="44" stroke="#000" stroke-width="2" opacity="0.18"/>
+      </pattern>
+      <filter id="glow${h}">
+        <feGaussianBlur stdDeviation="3" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <!-- base -->
+    <rect width="800" height="600" fill="#0A0A12"/>
+    <!-- gradient block -->
+    <rect width="800" height="600" fill="url(#g${h})"/>
+    <!-- diagonal stripes -->
+    <rect width="800" height="600" fill="url(#p${h})"/>
+    <!-- bottom dark wash for legibility -->
+    <rect x="0" y="380" width="800" height="220" fill="#000" opacity="0.55"/>
+    <!-- top neon corner accent -->
+    <rect x="0" y="0" width="800" height="6" fill="#fff"/>
+    <rect x="0" y="0" width="6" height="600" fill="#fff" opacity="0.4"/>
+    <!-- category motif -->
+    <g filter="url(#glow${h})" opacity="0.95">${motif}</g>
+    <!-- category tag -->
+    <g transform="translate(40 40)">
+      <rect x="0" y="0" width="${catLabel.length * 11 + 28}" height="28" rx="14" fill="#000" opacity="0.55"/>
+      <text x="14" y="19" font-family="'Space Grotesk', sans-serif" font-weight="700" font-size="12" fill="#fff" letter-spacing="2.5">${catLabel}</text>
+    </g>
+    <!-- big neon dot -->
+    <circle cx="760" cy="40" r="8" fill="#fff"/>
+    <circle cx="760" cy="40" r="14" fill="none" stroke="#fff" stroke-width="2" opacity="0.5"/>
+    <!-- name -->
+    <g font-family="'Fraunces', Georgia, serif" font-weight="800" fill="#fff">
+      <text x="40" y="${line2 ? '470' : '500'}" font-size="56" letter-spacing="-1">${escapeXml(line1)}</text>
+      ${line2 ? `<text x="40" y="540" font-size="56" letter-spacing="-1">${escapeXml(line2)}</text>` : ''}
+    </g>
+    <!-- subtitle: neighborhood -->
+    <text x="40" y="${line2 ? '570' : '540'}" font-family="'Space Grotesk', sans-serif" font-weight="600" font-size="14" fill="#fff" opacity="0.75" letter-spacing="3">${escapeXml((p.nbh || '').toUpperCase())}</text>
+  </svg>`;
+
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
+function escapeXml(s) {
+  return String(s).replace(/[<>&'"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;' }[c]));
+}
+
+const NBHS = ['All','Centro','Trastevere','Monti','Testaccio','Ostiense','Prati','Borghese','Flaminio','Aventino','San Giovanni','Tiburtino','EUR','Appia','Tuscolano','Various','Tevere'];
+
+// State
+const state = {
+  category: 'all',
+  neighborhood: 'All',
+  index: 0,
+  saved: [],
+  liked: [],
+  userPos: null,
+  filtered: [],
+  current: null,
+  mapInstance: null,
+};
+
+// ----- Distance (Haversine) -----
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function distLabel(p) {
+  if (!state.userPos) return null;
+  const d = haversine(state.userPos.lat, state.userPos.lng, p.lat, p.lng);
+  if (d < 1) return Math.round(d * 1000) + ' m';
+  return d.toFixed(1) + ' km';
+}
+
+// ----- Filtering -----
+function applyFilters() {
+  state.filtered = PLACES.filter(p => {
+    if (state.category !== 'all' && p.cat !== state.category) return false;
+    if (state.neighborhood !== 'All' && p.nbh !== state.neighborhood) return false;
+    return true;
+  });
+  state.index = 0;
+  renderStage();
+}
+
+// ----- Rendering: chip rows -----
+function renderChips() {
+  const catRow = document.getElementById('cat-row');
+  catRow.innerHTML = '';
+  CATS.forEach(c => {
+    const el = document.createElement('button');
+    el.className = 'chip' + (state.category === c.id ? ' active c-' + c.color : '');
+    el.innerHTML = `<span>${c.emoji}</span> ${c.label}`;
+    el.onclick = () => { state.category = c.id; renderChips(); applyFilters(); };
+    catRow.appendChild(el);
+  });
+  const nbhRow = document.getElementById('nbh-row');
+  nbhRow.innerHTML = '';
+  NBHS.forEach(n => {
+    const el = document.createElement('button');
+    el.className = 'chip' + (state.neighborhood === n ? ' active c-cyan' : '');
+    el.textContent = n;
+    el.onclick = () => { state.neighborhood = n; renderChips(); applyFilters(); };
+    nbhRow.appendChild(el);
+  });
+}
+
+// ----- Rendering: card stage -----
+function renderStage() {
+  const stage = document.getElementById('stage');
+  stage.innerHTML = '';
+  const remaining = state.filtered.slice(state.index, state.index + 3);
+  if (remaining.length === 0) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.innerHTML = `
+      <div class="ic">🔍</div>
+      <h3>No more places</h3>
+      <p>You've swiped through everything in this filter.<br/>Try adjusting category or neighborhood.</p>
+      <button id="reset-btn">RESET FILTERS</button>
+    `;
+    stage.appendChild(e);
+    document.getElementById('reset-btn').onclick = () => {
+      state.category = 'all';
+      state.neighborhood = 'All';
+      renderChips();
+      applyFilters();
+    };
+    state.current = null;
+    return;
+  }
+  remaining.reverse().forEach((p, ri) => {
+    const i = remaining.length - 1 - ri;
+    const card = buildCard(p, i);
+    stage.appendChild(card);
+  });
+  state.current = remaining[remaining.length - 1];
+  attachSwipe(stage.lastElementChild);
+}
+
+function buildCard(p, stackPos) {
+  const card = document.createElement('div');
+  card.className = 'card card-stack-' + (stackPos + 1);
+  card.dataset.id = p.id;
+
+  const dist = distLabel(p);
+  const catObj = CATS.find(c => c.id === p.cat);
+  const catColor = CAT_HEX[p.cat] || '#fff';
+
+  card.innerHTML = `
+    <div class="card-img" style="background-image:url(&quot;${posterFor(p)}&quot;)"></div>
+    <div class="card-top">
+      <button class="locate-btn" data-action="locate" title="Show on map">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </button>
+    </div>
+    <div class="swipe-stamp yes">LIKE</div>
+    <div class="swipe-stamp nope">SKIP</div>
+    <div class="card-content">
+      <div class="card-cat" style="border-color:${catColor}55">
+        <span class="dot" style="background:${catColor}"></span>
+        ${catObj.label}
+      </div>
+      <h2 class="card-title">${p.name}</h2>
+      <div class="card-sub">${p.nbh}  ·  ${p.desc.split('.')[0]}.</div>
+      <div class="card-meta">
+        <span class="meta-pill price">${p.price}</span>
+        <span class="meta-pill time">${p.time}</span>
+        ${dist ? `<span class="meta-pill dist">📍 ${dist}</span>` : ''}
+      </div>
+    </div>
+  `;
+
+  // Locate button: open map centered on this place
+  card.querySelector('[data-action="locate"]').onclick = (ev) => {
+    ev.stopPropagation();
+    openMap(p);
+  };
+
+  return card;
+}
+
+// ----- Swipe interaction -----
+function attachSwipe(card) {
+  if (!card || !card.classList.contains('card-stack-1')) return;
+  let startX = 0, startY = 0, dx = 0, dy = 0, isDown = false, captured = false;
+  const yesStamp = card.querySelector('.swipe-stamp.yes');
+  const noStamp  = card.querySelector('.swipe-stamp.nope');
+
+  const onDown = (e) => {
+    if (e.target.closest('.locate-btn')) return;
+    isDown = true;
+    captured = false;
+    card.classList.add('dragging');
+    const t = e.touches ? e.touches[0] : e;
+    startX = t.clientX; startY = t.clientY;
+  };
+  const onMove = (e) => {
+    if (!isDown) return;
+    const t = e.touches ? e.touches[0] : e;
+    dx = t.clientX - startX;
+    dy = t.clientY - startY;
+    // Once user has clearly moved >10px, this is a drag — prevent page scroll
+    if (!captured && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      captured = true;
+    }
+    if (captured && e.cancelable) e.preventDefault?.();
+    const rot = dx / 18;
+    card.style.transform = `translate(${dx}px, ${dy * 0.3}px) rotate(${rot}deg)`;
+    if (dx > 30) { yesStamp.style.opacity = Math.min(1, dx/120); noStamp.style.opacity = 0; }
+    else if (dx < -30) { noStamp.style.opacity = Math.min(1, -dx/120); yesStamp.style.opacity = 0; }
+    else { yesStamp.style.opacity = 0; noStamp.style.opacity = 0; }
+  };
+  const onUp = () => {
+    if (!isDown) return;
+    isDown = false;
+    card.classList.remove('dragging');
+    if (Math.abs(dx) > 100) {
+      const dir = dx > 0 ? 1 : -1;
+      flyAway(card, dir, dir > 0 ? 'like' : 'skip');
+    } else {
+      card.style.transform = '';
+      yesStamp.style.opacity = 0;
+      noStamp.style.opacity = 0;
+    }
+    dx = 0; dy = 0;
+  };
+
+  // Pointer events (modern unified API) — covers mouse + touch + pen
+  card.addEventListener('pointerdown', (e) => { card.setPointerCapture(e.pointerId); onDown(e); });
+  card.addEventListener('pointermove', onMove);
+  card.addEventListener('pointerup', onUp);
+  card.addEventListener('pointercancel', onUp);
+}
+
+function flyAway(card, dir, action) {
+  card.classList.add('gone');
+  card.style.transform = `translateX(${dir * 800}px) rotate(${dir * 30}deg)`;
+  setTimeout(() => {
+    if (action === 'like') likeCurrent(true);
+    else nextCard();
+  }, 320);
+}
+
+function nextCard() {
+  state.index++;
+  renderStage();
+}
+
+function likeCurrent(silent) {
+  if (!state.current) return;
+  // Record the like (de-duped)
+  if (!state.liked.find(l => l.id === state.current.id)) {
+    state.liked.push(state.current);
+    persist();
+    updateLikedBadge();
+  }
+  if (!silent) toast(`Liked → ${state.current.name}`, 'red');
+  nextCard();
+}
+
+function saveCurrent() {
+  if (!state.current) return;
+  if (state.saved.find(s => s.id === state.current.id)) {
+    toast('Already in your shortlist', 'magenta');
+  } else {
+    state.saved.push(state.current);
+    persist();
+    updateSavedBadge();
+    toast(`Saved → ${state.current.name}`, 'amber');
+  }
+}
+
+function skipCurrent() {
+  if (!state.current) return;
+  nextCard();
+}
+
+// ----- Saved overlay -----
+function renderSaved() {
+  const list = document.getElementById('saved-list');
+  list.innerHTML = '';
+  const band = document.getElementById('iti-band');
+  if (state.saved.length === 0) {
+    band.style.display = 'none';
+    list.innerHTML = `
+      <div class="saved-empty">
+        <div class="ic">📍</div>
+        <h4>Empty shortlist</h4>
+        <p>Tap the bookmark icon while swiping to save places here.</p>
+      </div>
+    `;
+    return;
+  }
+  band.style.display = 'block';
+  document.getElementById('iti-btn').disabled = state.saved.length < 2;
+  state.saved.forEach(p => {
+    const d = distLabel(p);
+    const catObj = CATS.find(c => c.id === p.cat);
+    const item = document.createElement('div');
+    item.className = 'saved-card';
+    item.innerHTML = `
+      <div class="saved-img" style="background-image:url(&quot;${posterFor(p)}&quot;)"></div>
+      <div class="saved-info">
+        <div class="cat">${catObj.label}</div>
+        <h5>${p.name}</h5>
+        <div class="meta">${p.nbh}${d ? ' · ' + d : ''} · ${p.price}</div>
+      </div>
+      <div class="saved-actions">
+        <button class="saved-rm" data-rm="${p.id}" title="Remove">
+          <svg viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    `;
+    item.onclick = () => openMap(p);
+    item.querySelector('[data-rm]').onclick = (ev) => {
+      ev.stopPropagation();
+      state.saved = state.saved.filter(x => x.id !== p.id);
+      persist();
+      updateSavedBadge();
+      renderSaved();
+    };
+    list.appendChild(item);
+  });
+}
+
+function updateSavedBadge() {
+  const b = document.getElementById('saved-count');
+  if (state.saved.length === 0) { b.style.display = 'none'; }
+  else { b.style.display = 'block'; b.textContent = state.saved.length; }
+}
+
+function updateLikedBadge() {
+  const b = document.getElementById('liked-count');
+  if (state.liked.length === 0) { b.style.display = 'none'; }
+  else { b.style.display = 'block'; b.textContent = state.liked.length; }
+}
+
+function renderLiked() {
+  const list = document.getElementById('liked-list');
+  list.innerHTML = '';
+  if (state.liked.length === 0) {
+    list.innerHTML = `
+      <div class="saved-empty">
+        <div class="ic">💚</div>
+        <h4>No likes yet</h4>
+        <p>Swipe right or tap the heart to like a place. They show up here.</p>
+      </div>
+    `;
+    return;
+  }
+  state.liked.forEach(p => {
+    const d = distLabel(p);
+    const catObj = CATS.find(c => c.id === p.cat);
+    const item = document.createElement('div');
+    item.className = 'saved-card';
+    item.innerHTML = `
+      <div class="saved-img" style="background-image:url(&quot;${posterFor(p)}&quot;)"></div>
+      <div class="saved-info">
+        <div class="cat" style="color:var(--red)">${catObj.label}</div>
+        <h5>${p.name}</h5>
+        <div class="meta">${p.nbh}${d ? ' · ' + d : ''} · ${p.price}</div>
+      </div>
+      <div class="saved-actions">
+        <button class="saved-rm" data-rm="${p.id}" title="Remove">
+          <svg viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    `;
+    item.onclick = () => openMap(p);
+    item.querySelector('[data-rm]').onclick = (ev) => {
+      ev.stopPropagation();
+      state.liked = state.liked.filter(x => x.id !== p.id);
+      persist();
+      updateLikedBadge();
+      renderLiked();
+    };
+    list.appendChild(item);
+  });
+}
+
+// ----- Itinerary generation -----
+function generateItinerary() {
+  if (state.saved.length < 2) return;
+  const order = [...state.saved].sort((a, b) => {
+    const score = (c) => c === 'coffee' ? 1 : c === 'restaurant' ? 3 : c === 'culture' ? 2 : c === 'outdoor' ? 2.5 : c === 'event' ? 4 : c === 'nightlife' ? 5 : 3;
+    return score(a.cat) - score(b.cat);
+  });
+  let h = 11, m = 0;
+  const stops = order.map(p => {
+    const t = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    const incr = p.cat === 'restaurant' ? 90 : p.cat === 'culture' ? 100 : p.cat === 'nightlife' ? 150 : 70;
+    m += incr;
+    while (m >= 60) { h++; m -= 60; }
+    return { time: t, p };
+  });
+  const html = `
+    <div class="modal-handle"></div>
+    <div class="modal-cat" style="color:var(--lime)">⚡ TONIGHT'S ITINERARY</div>
+    <div class="modal-title">${stops.length} stops, walk-friendly</div>
+    <div class="modal-desc">Suggested order based on category timing. Drag-reorder isn't in this demo — that's the next step.</div>
+    ${stops.map(s => `
+      <div class="iti-stop">
+        <div class="iti-time">${s.time}</div>
+        <div class="iti-info">
+          <h6>${s.p.name}</h6>
+          <div class="cat">${CATS.find(c => c.id === s.p.cat).label}  ·  ${s.p.nbh}  ·  ${s.p.price}</div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+  showModal(html);
+}
+
+// ----- Map (Leaflet) -----
+function initMap() {
+  if (state.mapInstance) return state.mapInstance;
+  if (typeof L === 'undefined') {
+    // Leaflet didn't load — show graceful fallback
+    document.getElementById('map').innerHTML = `
+      <div style="height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px;text-align:center;color:var(--muted)">
+        <div style="font-size:42px;margin-bottom:12px">🗺️</div>
+        <h3 style="font-family:'Fraunces',serif;font-size:20px;color:var(--text);margin-bottom:8px">Map couldn't load</h3>
+        <p style="font-size:13px;line-height:1.5">The map library failed to load. This usually means the demo is offline or blocked.<br/>Try opening on a different network or once it's deployed online.</p>
+      </div>`;
+    return null;
+  }
+  const map = L.map('map', {
+    zoomControl: true,
+    attributionControl: true,
+  }).setView([41.9028, 12.4964], 13);
+
+  // OpenStreetMap standard tiles — most reliable, works everywhere
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+
+  // Add a marker per place
+  PLACES.forEach(p => {
+    const color = CAT_HEX[p.cat] || '#fff';
+    const catObj = CATS.find(c => c.id === p.cat);
+    const icon = L.divIcon({
+      className: 'custom-marker',
+      html: `<div class="marker-pin" style="background:${color};color:${color}"><span class="marker-ic">${catObj.emoji}</span></div>`,
+      iconSize: [36, 50],
+      iconAnchor: [18, 46],
+    });
+    const m = L.marker([p.lat, p.lng], { icon }).addTo(map);
+    m.on('click', () => showMapInfo(p));
+  });
+
+  state.mapInstance = map;
+  return map;
+}
+
+function showMapInfo(p) {
+  const info = document.getElementById('map-info');
+  const d = distLabel(p);
+  const catObj = CATS.find(c => c.id === p.cat);
+  info.innerHTML = `
+    <div class="map-info-row">
+      <div class="map-info-img" style="background-image:url(&quot;${posterFor(p)}&quot;)"></div>
+      <div class="map-info-text">
+        <div class="cat">${catObj.label}  ·  ${p.nbh}</div>
+        <h6>${p.name}</h6>
+        <div class="sub">${p.desc.split('.')[0]}.</div>
+        <div class="map-info-meta">
+          <span class="map-info-pill price">${p.price}</span>
+          <span class="map-info-pill">${p.time}</span>
+          ${d ? `<span class="map-info-pill dist">📍 ${d}</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+  info.style.display = 'block';
+}
+
+function openMap(focusOn) {
+  const overlay = document.getElementById('overlay-map');
+  overlay.classList.add('open');
+
+  const initAndShow = () => {
+    const map = initMap();
+    if (!map) return;
+    // Force the map to recalculate its size against the container's actual dimensions
+    map.invalidateSize({ animate: false, pan: false });
+    if (focusOn) {
+      map.setView([focusOn.lat, focusOn.lng], 16, { animate: false });
+      showMapInfo(focusOn);
+    } else if (state.userPos) {
+      map.setView([state.userPos.lat, state.userPos.lng], 14, { animate: false });
+      if (!state.userMarker && typeof L !== 'undefined') {
+        const ic = L.divIcon({
+          className: 'custom-marker',
+          html: `<div class="marker-pin current"></div>`,
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+        });
+        state.userMarker = L.marker([state.userPos.lat, state.userPos.lng], { icon: ic }).addTo(map);
+      }
+      document.getElementById('map-info').style.display = 'none';
+    } else {
+      map.setView([41.9028, 12.4964], 13, { animate: false });
+      document.getElementById('map-info').style.display = 'none';
+    }
+    // Tile load is async — call invalidateSize a few times to be safe on mobile
+    [50, 200, 400, 800].forEach(d => setTimeout(() => {
+      if (state.mapInstance) state.mapInstance.invalidateSize({ animate: false, pan: false });
+    }, d));
+  };
+
+  // Wait for the slide-up transition to finish on its own
+  setTimeout(initAndShow, 400);
+}
+
+// ----- Info modal -----
+function showInfo() {
+  if (!state.current) return;
+  const p = state.current;
+  const catObj = CATS.find(c => c.id === p.cat);
+  const d = distLabel(p);
+  const html = `
+    <div class="modal-handle"></div>
+    <div class="modal-cat">${catObj.label}  ·  ${p.nbh}</div>
+    <div class="modal-title">${p.name}</div>
+    <div class="modal-desc">${p.desc}</div>
+    <div class="modal-grid">
+      <div class="modal-stat"><div class="lab">Price</div><div class="val lime">${p.price}</div></div>
+      <div class="modal-stat"><div class="lab">Time</div><div class="val amber">${p.time}</div></div>
+      ${d ? `<div class="modal-stat"><div class="lab">Distance</div><div class="val cyan">${d}</div></div>` : ''}
+      <div class="modal-stat"><div class="lab">Category</div><div class="val red">${catObj.label}</div></div>
+    </div>
+  `;
+  showModal(html);
+}
+
+function showModal(html) {
+  const back = document.getElementById('modal-back');
+  document.getElementById('modal').innerHTML = html;
+  back.classList.add('open');
+}
+
+document.getElementById('modal-back').addEventListener('click', (e) => {
+  if (e.target.id === 'modal-back') {
+    document.getElementById('modal-back').classList.remove('open');
+  }
+});
+
+// ----- Toast -----
+let toastTimer;
+function toast(msg, color) {
+  const t = document.getElementById('toast');
+  t.className = 'toast' + (color ? ' ' + color : '');
+  t.textContent = msg;
+  requestAnimationFrame(() => t.classList.add('show'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+// ----- Geolocation -----
+function requestGeo() {
+  if (!navigator.geolocation) { toast('Geolocation not supported', 'red'); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      state.userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      toast('Location set ✓', 'cyan');
+      renderStage();
+    },
+    err => {
+      // Default to Rome center if denied (for the demo)
+      state.userPos = { lat: 41.9028, lng: 12.4964 };
+      toast('Using Rome center as your location', 'magenta');
+      renderStage();
+    },
+    { enableHighAccuracy: false, timeout: 6000 }
+  );
+}
+
+// ----- Persistence -----
+function persist() {
+  try {
+    localStorage.setItem('localoop-saved', JSON.stringify(state.saved));
+    localStorage.setItem('localoop-liked', JSON.stringify(state.liked));
+  } catch(e) {}
+}
+function loadPersisted() {
+  try {
+    const s = localStorage.getItem('localoop-saved');
+    if (s) state.saved = JSON.parse(s);
+    const l = localStorage.getItem('localoop-liked');
+    if (l) state.liked = JSON.parse(l);
+  } catch(e) {}
+}
+
+// ----- Overlay open/close -----
+function openOverlay(id) {
+  document.getElementById(id).classList.add('open');
+  if (id === 'overlay-saved') renderSaved();
+  if (id === 'overlay-liked') renderLiked();
+}
+function closeOverlay(id) {
+  document.getElementById(id).classList.remove('open');
+}
+document.querySelectorAll('[data-close]').forEach(b => {
+  b.onclick = () => closeOverlay(b.dataset.close);
+});
+
+// ----- Wire up actions -----
+document.getElementById('act-nope').onclick = skipCurrent;
+document.getElementById('act-info').onclick = showInfo;
+document.getElementById('act-save').onclick = saveCurrent;
+document.getElementById('act-yes').onclick = () => likeCurrent(true);
+document.getElementById('btn-saved').onclick = () => openOverlay('overlay-saved');
+document.getElementById('btn-liked').onclick = () => openOverlay('overlay-liked');
+document.getElementById('btn-map').onclick = () => openMap();
+document.getElementById('iti-btn').onclick = generateItinerary;
+
+// ----- Error reporting (visible on mobile when something breaks) -----
+function showFatalError(msg) {
+  let el = document.getElementById('fatal-err');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'fatal-err';
+    el.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99999;background:#FF3D52;color:#000;padding:12px;border-radius:10px;font:600 11px/1.4 monospace;max-height:50vh;overflow:auto;box-shadow:0 0 0 2px #000,0 8px 24px rgba(0,0,0,0.6)';
+    document.body.appendChild(el);
+  }
+  el.textContent = 'JS ERROR: ' + msg + '  (tap to dismiss)';
+  el.onclick = () => el.remove();
+}
+window.addEventListener('error', (ev) => {
+  showFatalError((ev.error && ev.error.message ? ev.error.message : ev.message) + ' @ ' + (ev.filename || '?') + ':' + (ev.lineno || '?'));
+});
+window.addEventListener('unhandledrejection', (ev) => {
+  showFatalError('PROMISE: ' + (ev.reason && ev.reason.message ? ev.reason.message : String(ev.reason)));
+});
+
+// ----- Boot -----
+try {
+  loadPersisted();
+  updateSavedBadge();
+  updateLikedBadge();
+  renderChips();
+  applyFilters();
+  requestGeo();
+} catch (err) {
+  showFatalError('BOOT: ' + (err && err.message ? err.message : String(err)));
+}
+</script>
+</body>
+</html>
